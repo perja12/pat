@@ -9,12 +9,14 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/la5nta/wl2k-go/fbb"
 	"github.com/spf13/pflag"
@@ -55,13 +57,15 @@ func composeMessageHeader(inReplyToMsg *fbb.Message) *fbb.Message {
 		}
 	}
 
-	fmt.Printf("Cc")
+	fmt.Printf("Cc (! to remove cc's)")
 	if inReplyToMsg != nil {
 		fmt.Printf(" %s", ccCand)
 	}
 	fmt.Print(`: `)
 	cc := readLine()
-	if cc == "" && inReplyToMsg != nil {
+	if cc == "!" {
+
+	} else if cc == "" && inReplyToMsg != nil {
 		for _, addr := range ccCand {
 			msg.AddCc(addr.String())
 		}
@@ -110,7 +114,14 @@ func composeMessage(ctx context.Context, args []string) {
 	p2pOnly := set.BoolP("p2p-only", "", false, "")
 	template := set.StringP("template", "", "", "")
 	inReplyTo := set.StringP("in-reply-to", "", "", "")
+	redirect := set.StringP("redirect", "", "", "")
 	set.Parse(args)
+
+	// Only allow either "in-reply-to" or "redirect"
+	if *inReplyTo != "" && *redirect != "" {
+		fmt.Fprint(os.Stderr, "ERROR: Only use one of the arguments 'in-reply-to' or 'redirect'!\n")
+		os.Exit(1)
+	}
 
 	// Remaining args are recipients
 	recipients := []string{}
@@ -132,8 +143,17 @@ func composeMessage(ctx context.Context, args []string) {
 		}
 	}
 
+	// Load redirect message
+	if path := *redirect; path != "" {
+		var err error
+		inReplyToMsg, err = openMessage(path)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	// Check if condition are met for non-interactive compose.
-	if (len(*subject)+len(*attachments)+len(*ccs)+len(recipients)) > 0 && *template != "" {
+	if (len(*subject)+len(*attachments)+len(*ccs)+len(recipients)) > 0 && *template != "" && *redirect != "" {
 		noninteractiveComposeMessage(*from, *subject, *attachments, *ccs, recipients, *p2pOnly)
 		return
 	}
@@ -144,8 +164,19 @@ func composeMessage(ctx context.Context, args []string) {
 		return
 	}
 
-	// Interactive compose
-	interactiveComposeMessage(inReplyToMsg)
+	if *redirect != "" {
+		// Construct a new message with headers from the message to be redirected
+		draftMsg := composeMessageHeader(inReplyToMsg)
+		msg, err := redirectMessage(draftMsg, inReplyToMsg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+			os.Exit(1)
+		}
+		postMessage(msg)
+	} else {
+		// Interactive compose
+		interactiveComposeMessage(inReplyToMsg)
+	}
 }
 
 func noninteractiveComposeMessage(from string, subject string, attachments []string, ccs []string, recipients []string, p2pOnly bool) {
@@ -203,6 +234,7 @@ func composeReplyMessage(inReplyToMsg *fbb.Message) {
 
 func composeBody(template string) (string, error) {
 	body, err := editor.EditText(template)
+	fmt.Printf("Body: %v\n", body)
 	if err != nil {
 		return body, err
 	}
@@ -244,6 +276,52 @@ func interactiveComposeMessage(inReplyToMsg *fbb.Message) {
 	}
 	fmt.Println(msg)
 	postMessage(msg)
+}
+
+func redirectMessage(msg *fbb.Message, redirectMsg *fbb.Message) (*fbb.Message, error) {
+	if redirectMsg == nil {
+		return nil, errors.New("There is no message to be redirected!")
+	}
+
+	buf := bytes.NewBufferString(``)
+	w := bufio.NewWriter(buf)
+
+	// Write the "forward without change" line
+	now := time.Now().UTC()
+	fmt.Fprintf(w,
+		"----- Message from %s was forwarded without change by %s at %s UTC -----\n\n",
+		redirectMsg.From().Addr,
+		msg.From().Addr,
+		now.Format("2006-01-02 15:04"))
+
+	// Write header and body from the message to be redirected
+	// Code copied from wl2k-go/ff/message.go.
+	fmt.Fprintln(w, "MID: ", redirectMsg.MID())
+	fmt.Fprintln(w, `Date:`, redirectMsg.Date())
+	fmt.Fprintln(w, `From:`, redirectMsg.From())
+	for _, to := range redirectMsg.To() {
+		fmt.Fprintln(w, `To:`, to)
+	}
+	for _, cc := range redirectMsg.Cc() {
+		fmt.Fprintln(w, `Cc:`, cc)
+	}
+	fmt.Fprintln(w, `Subject:`, redirectMsg.Subject())
+
+	body, _ := redirectMsg.Body()
+	fmt.Fprintf(w, "\n%s\n", body)
+
+	w.Flush()
+
+	// Set the body of the new message
+	msg.SetBody(buf.String())
+
+	// Attachments - copy attachments from the message to be redirect to the new message
+	for _, f := range redirectMsg.Files() {
+		msg.AddFile(f)
+	}
+
+	fmt.Printf("New msg:\n%v", msg)
+	return msg, nil
 }
 
 func writeMessageCitation(w io.Writer, inReplyToMsg *fbb.Message) {

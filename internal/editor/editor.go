@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/la5nta/pat/internal/buildinfo"
+	"github.com/wlynxg/chardet"
 )
 
 func Executable() string {
@@ -64,5 +65,10 @@ func EditText(template string) (string, error) {
 	defer f.Close()
 	defer os.Remove(f.Name())
 	body, err := io.ReadAll(f)
+
+	// Detect the charset
+	result := chardet.Detect(body)
+	fmt.Printf("Detected result: %+v\n", result)
+
 	return string(body), err
 }

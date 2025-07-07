@@ -225,6 +225,7 @@ func (b messageBuilder) scanAndBuild(path string) (Message, error) {
 					b.FormsMgr.config.LineReader()
 					var err error
 					ans, err = editor.EditText("")
+					fmt.Printf("Ans: %v\n", ans)
 					if err != nil {
 						log.Fatalf("Failed to start text editor: %v", err)
 					}
@@ -323,6 +324,7 @@ func (b messageBuilder) scanAndBuild(path string) (Message, error) {
 		default:
 			if strings.TrimSpace(lineTmpl) != "" {
 				log.Printf("skipping unknown template line: '%q'", lineTmpl)
+				log.Printf("key: '%q'", key)
 			}
 		}
 	}

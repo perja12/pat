@@ -1,6 +1,8 @@
 module github.com/la5nta/pat
 
-go 1.19
+go 1.23.0
+
+toolchain go1.23.7
 
 require (
 	github.com/adrg/xdg v0.5.3
@@ -19,6 +21,7 @@ require (
 	github.com/pd0mz/go-maidenhead v1.0.0
 	github.com/peterh/liner v1.2.2
 	github.com/spf13/pflag v1.0.5
+	github.com/wlynxg/chardet v1.0.0
 	golang.org/x/sync v0.10.0
 )
 
@@ -33,6 +36,7 @@ require (
 	github.com/paulrosania/go-charset v0.0.0-20190326053356-55c9d7a5834c // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
+	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.32.0 // indirect
 	golang.org/x/net v0.34.0 // indirect
 	golang.org/x/sys v0.29.0 // indirect
